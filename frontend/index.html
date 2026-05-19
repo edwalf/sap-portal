@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1117">
+<meta name="description" content="SAP Portal — Existencias, Ventas y Saldos">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>SAP Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161821;--bg3:#1e2030;--bg4:#252840;
+  --border:#2a2d3e;--border2:#363a52;--border3:#454868;
+  --text:#e4e6f0;--text2:#8b90a8;--text3:#555870;
+  --accent:#4f7cff;--accent2:#7b5cff;
+  --green:#2dd4a0;--amber:#f5a623;--red:#f0546a;--blue:#4f7cff;
+  --radius:12px;--radius-sm:8px;--radius-xs:5px;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
+  --nav-h:60px;
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:40px 40px;opacity:.35;pointer-events:none;z-index:0}
+
+/* ── SCREENS ── */
+.screen{display:none;position:relative;z-index:1}
+.screen.active{display:flex}
+
+/* ══════════════ LOGIN ══════════════ */
+#screen-login{min-height:100vh;align-items:center;justify-content:center}
+.login-wrap{width:100%;max-width:420px;padding:20px}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:48px 44px;position:relative;overflow:hidden;box-shadow:0 0 80px rgba(79,124,255,.07),0 32px 64px rgba(0,0,0,.5)}
+.login-card::before{content:'';position:absolute;top:-100px;right:-100px;width:280px;height:280px;background:radial-gradient(circle,rgba(79,124,255,.12) 0%,transparent 65%);pointer-events:none}
+.login-card::after{content:'';position:absolute;bottom:-60px;left:-60px;width:200px;height:200px;background:radial-gradient(circle,rgba(123,92,255,.08) 0%,transparent 65%);pointer-events:none}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:40px}
+.logo-icon{width:44px;height:44px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;box-shadow:0 4px 16px rgba(79,124,255,.35)}
+.logo-name{font-size:21px;font-weight:600;letter-spacing:-.3px}
+.logo-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:1px}
+h1.login-title{font-size:27px;font-weight:600;letter-spacing:-.5px;margin-bottom:6px}
+.login-sub{font-size:14px;color:var(--text2);margin-bottom:32px;line-height:1.5}
+.field{margin-bottom:18px}
+.field label{display:block;font-size:11px;font-weight:500;color:var(--text2);margin-bottom:7px;letter-spacing:.5px;text-transform:uppercase}
+.field input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:12px 16px;color:var(--text);font-family:var(--font);font-size:15px;outline:none;transition:border .18s,box-shadow .18s}
+.field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,124,255,.13)}
+.field input::placeholder{color:var(--text3)}
+.btn-login{width:100%;padding:14px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-family:var(--font);font-size:15px;font-weight:500;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 4px 18px rgba(79,124,255,.32);transition:all .2s;margin-top:4px}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(79,124,255,.42)}
+.btn-login:active{transform:translateY(0)}
+.btn-login:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.login-error{background:rgba(240,84,106,.1);border:1px solid rgba(240,84,106,.25);border-radius:var(--radius-sm);padding:11px 14px;font-size:13px;color:var(--red);margin-bottom:18px;display:none}
+.login-error.show{display:block}
+
+/* ══════════════ APP ══════════════ */
+#screen-app{flex-direction:column;min-height:100vh}
+
+/* NAV */
+.nav{background:rgba(22,24,33,.94);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;height:var(--nav-h);position:sticky;top:0;z-index:100;gap:8px}
+.nav-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-right:8px}
+.nav-brand-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px}
+.nav-brand-name{font-size:15px;font-weight:600;letter-spacing:-.2px}
+.nav-tabs{display:flex;gap:2px;flex:1;overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none}
+.nav-tabs::-webkit-scrollbar{display:none}
+.nav-tab{display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:7px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;white-space:nowrap;transition:all .15s;flex-shrink:0}
+.nav-tab:hover{background:var(--bg3);color:var(--text)}
+.nav-tab.active{background:rgba(79,124,255,.14);color:var(--accent)}
+.nav-tab svg{opacity:.7;flex-shrink:0}
+.nav-tab.active svg{opacity:1}
+.nav-end{display:flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0}
+.nav-user-name{font-size:13px;color:var(--text2);display:none}
+@media(min-width:640px){.nav-user-name{display:block}}
+.nav-avatar{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
+.btn-logout{padding:5px 11px;border-radius:6px;background:transparent;border:1px solid var(--border2);color:var(--text3);cursor:pointer;font-family:var(--font);font-size:12px;transition:all .15s}
+.btn-logout:hover{border-color:var(--red);color:var(--red)}
+
+/* CONTENT */
+.app-body{flex:1;padding:28px 20px 48px;max-width:1080px;margin:0 auto;width:100%}
+.view{display:none;animation:fadeIn .18s ease}
+.view.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* PAGE HEADER */
+.page-header{margin-bottom:24px}
+.page-title{font-size:23px;font-weight:600;letter-spacing:-.4px}
+.page-sub{font-size:13.5px;color:var(--text2);margin-top:4px}
+
+/* CARD */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:18px}
+.card-label{font-size:11px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:16px;display:flex;align-items:center;gap:7px}
+.card-label svg{opacity:.6}
+
+/* FORM */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.form-grid.cols1{grid-template-columns:1fr}
+.form-grid.cols3{grid-template-columns:2fr 1fr 1fr}
+@media(max-width:580px){.form-grid,.form-grid.cols3{grid-template-columns:1fr}}
+.fg label{display:block;font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:500;letter-spacing:.4px;text-transform:uppercase}
+.fg input,.fg select{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 13px;color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border .18s}
+.fg input:focus,.fg select:focus{border-color:var(--accent)}
+.fg input:read-only{opacity:.55;cursor:default}
+.fg select option{background:var(--bg3)}
+
+/* BUTTONS */
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+.btn{padding:9px 18px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-family:var(--font);font-size:13.5px;font-weight:500;transition:all .18s;flex-shrink:0}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 2px 10px rgba(79,124,255,.25)}
+.btn-primary:hover{background:#6b8fff}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.btn-ghost:hover{border-color:var(--border3);color:var(--text)}
+.btn-success{background:var(--green);color:#071a11;font-weight:600}
+.btn-success:hover{filter:brightness(1.08)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-icon{width:36px;height:36px;border-radius:var(--radius-xs);border:1px solid var(--border2);background:transparent;color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s;flex-shrink:0}
+.btn-icon:hover{border-color:var(--red);color:var(--red);background:rgba(240,84,106,.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* RESULT BOX */
+.result-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:18px;margin-top:16px;min-height:72px}
+.result-empty{text-align:center;padding:24px 0;color:var(--text3);font-size:14px}
+
+/* LOADING */
+.loading{display:flex;align-items:center;gap:10px;color:var(--text2);font-size:14px}
+.spin{width:17px;height:17px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:10.5px;font-weight:500;color:var(--text3);padding:7px 12px;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.tbl td{padding:11px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tr:last-child td{border:none}
+.tbl tr:hover td{background:rgba(255,255,255,.018)}
+.tbl .mono{font-family:var(--mono);font-size:12px}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;font-family:var(--mono)}
+.badge-green{background:rgba(45,212,160,.1);color:var(--green);border:1px solid rgba(45,212,160,.18)}
+.badge-amber{background:rgba(245,166,35,.1);color:var(--amber);border:1px solid rgba(245,166,35,.18)}
+.badge-red{background:rgba(240,84,106,.1);color:var(--red);border:1px solid rgba(240,84,106,.18)}
+.badge-blue{background:rgba(79,124,255,.1);color:var(--accent);border:1px solid rgba(79,124,255,.18)}
+.badge-gray{background:rgba(139,144,168,.1);color:var(--text2);border:1px solid rgba(139,144,168,.15)}
+
+/* KPI GRID */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:14px;margin-bottom:24px}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;top:-24px;right:-24px;width:90px;height:90px;border-radius:50%;opacity:.06}
+.kpi.c-blue::after{background:var(--blue)} .kpi.c-green::after{background:var(--green)}
+.kpi.c-amber::after{background:var(--amber)} .kpi.c-red::after{background:var(--red)}
+.kpi-icon{font-size:20px;margin-bottom:10px;opacity:.8}
+.kpi-val{font-size:28px;font-weight:600;font-family:var(--mono);letter-spacing:-1px;line-height:1}
+.kpi-label{font-size:12px;color:var(--text2);margin-top:5px}
+
+/* STOCK ITEMS */
+.stock-row{display:grid;grid-template-columns:40px 1fr auto;gap:14px;align-items:center;padding:13px 0;border-bottom:1px solid var(--border)}
+.stock-row:last-child{border:none;padding-bottom:0}
+.stock-icon{width:40px;height:40px;background:var(--bg3);border:1px solid var(--border);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.stock-name{font-size:14px;font-weight:500;line-height:1.3}
+.stock-meta{font-size:11.5px;color:var(--text2);margin-top:3px;font-family:var(--mono)}
+.stock-qty{text-align:right;flex-shrink:0}
+.qty-num{font-size:22px;font-weight:600;font-family:var(--mono);line-height:1}
+.qty-unit{font-size:10.5px;color:var(--text3);margin-top:2px}
+.qty-ok{color:var(--green)} .qty-low{color:var(--amber)} .qty-zero{color:var(--red)}
+
+/* ORDER LINES */
+.line-row{display:grid;grid-template-columns:2fr 90px 110px 36px;gap:8px;align-items:end;margin-bottom:8px}
+.line-row .lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;font-weight:500}
+@media(max-width:580px){.line-row{grid-template-columns:1fr 1fr}}
+.totals-bar{display:flex;justify-content:flex-end;gap:28px;padding:14px 0;border-top:1px solid var(--border);margin-top:6px;flex-wrap:wrap}
+.tot-item .tot-label{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px}
+.tot-item .tot-val{font-size:18px;font-weight:600;font-family:var(--mono);margin-top:3px;color:var(--text)}
+.tot-item .tot-val.hi{color:var(--accent)}
+
+/* BALANCE CARD */
+.bal-header{display:flex;align-items:center;justify-content:space-between;padding:18px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:14px;gap:12px;flex-wrap:wrap}
+.bal-name{font-size:15px;font-weight:600}
+.bal-code{font-size:11.5px;color:var(--text3);font-family:var(--mono);margin-top:3px}
+.bal-amount{text-align:right}
+.bal-num{font-size:27px;font-weight:600;font-family:var(--mono)}
+.bal-num.owe{color:var(--red)} .bal-num.clear{color:var(--green)}
+.bal-lbl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+
+/* SAP STATUS */
+.sap-ping{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:16px}
+.sap-ping.ok{background:rgba(45,212,160,.07);border:1px solid rgba(45,212,160,.18);color:var(--green)}
+.sap-ping.fail{background:rgba(240,84,106,.07);border:1px solid rgba(240,84,106,.18);color:var(--red)}
+.sap-ping.checking{background:rgba(79,124,255,.07);border:1px solid rgba(79,124,255,.18);color:var(--accent)}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.dot-on{background:var(--green);box-shadow:0 0 6px var(--green)} .dot-off{background:var(--red)} .dot-spin{background:var(--accent);animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* TOAST */
+.toast{position:fixed;bottom:22px;right:22px;z-index:9999;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:13px 18px;font-size:13.5px;min-width:240px;max-width:340px;box-shadow:0 8px 28px rgba(0,0,0,.45);transform:translateY(12px);opacity:0;transition:all .22s;pointer-events:none}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.ok{border-left:3px solid var(--green)} .toast.err{border-left:3px solid var(--red)} .toast.info{border-left:3px solid var(--accent)}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="screen-login" class="screen active">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="logo-icon">⬡</div>
+        <div><div class="logo-name">SAP Portal</div><div class="logo-sub">Business One</div></div>
+      </div>
+      <h1 class="login-title">Bienvenido</h1>
+      <p class="login-sub">Ingresa tus credenciales para acceder al portal</p>
+      <div class="login-error" id="login-error">Usuario o contraseña incorrectos</div>
+      <div class="field">
+        <label>Usuario</label>
+        <input id="inp-user" type="text" placeholder="usuario" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input id="inp-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn-login" id="btn-login">Ingresar</button>
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="screen-app" class="screen">
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-brand-icon">⬡</div>
+      <span class="nav-brand-name">SAP Portal</span>
+    </div>
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="dashboard">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-tab" data-view="inventario">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+        Existencias
+      </button>
+      <button class="nav-tab" data-view="ventas">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+        Orden de venta
+      </button>
+      <button class="nav-tab" data-view="saldos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        Saldos
+      </button>
+      <button class="nav-tab" data-view="config">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Config
+      </button>
+    </div>
+    <div class="nav-end">
+      <span class="nav-user-name" id="nav-uname"></span>
+      <div class="nav-avatar" id="nav-avatar">?</div>
+      <button class="btn-logout" id="btn-logout">Salir</button>
+    </div>
+  </nav>
+
+  <div class="app-body">
+
+    <!-- DASHBOARD -->
+    <div id="view-dashboard" class="view active">
+      <div class="page-header">
+        <h1 class="page-title">Dashboard</h1>
+        <p class="page-sub" id="dash-date"></p>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi c-blue"><div class="kpi-icon">📦</div><div class="kpi-val" id="kpi-items">—</div><div class="kpi-label">Artículos catálogo</div></div>
+        <div class="kpi c-green"><div class="kpi-icon">🧾</div><div class="kpi-val" id="kpi-orders">—</div><div class="kpi-label">Órdenes abiertas</div></div>
+        <div class="kpi c-amber"><div class="kpi-icon">👤</div><div class="kpi-val" id="kpi-clients">—</div><div class="kpi-label">Clientes activos</div></div>
+        <div class="kpi c-red"><div class="kpi-icon">⚠️</div><div class="kpi-val" id="kpi-low">—</div><div class="kpi-label">Bajo stock</div></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Últimas órdenes de venta</div>
+        <div id="dash-orders-wrap"><div class="result-empty">Cargando…</div></div>
+      </div>
+    </div>
+
+    <!-- EXISTENCIAS -->
+    <div id="view-inventario" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Consulta de existencias</h1>
+        <p class="page-sub">Stock en tiempo real desde SAP Business One</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Búsqueda</div>
+        <div class="form-grid">
+          <div class="fg"><label>Código o nombre del artículo</label>
+            <input id="inv-q" type="text" placeholder="Ej: A-100 o aceite motor" style="text-transform:uppercase"></div>
+          <div class="fg"><label>Almacén</label>
+            <select id="inv-wh" class="fg"><option value="">Todos</option></select></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btn-inv-search">Consultar SAP</button>
+          <button class="btn btn-ghost" id="btn-inv-all">Ver todos</button>
+        </div>
+        <div class="result-box" id="inv-result" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ORDEN DE VENTA -->
+    <div id="view-ventas" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Nueva orden de venta</h1>
+        <p class="page-sub">Se crea directamente en SAP Business One</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Cliente</div>
+        <div class="form-grid">
+          <div class="fg"><label>Código cliente (CardCode)</label>
+            <input id="ord-bp" type="text" placeholder="Ej: C-001" style="text-transform:uppercase"></div>
+          <div class="fg"><label>Nombre (se completa solo)</label>
+            <input id="ord-bpname" type="text" readonly placeholder="Busca el código primero"></div>
+        </div>
+        <div class="form-grid">
+          <div class="fg"><label>Fecha entrega</label><input id="ord-due" type="date"></div>
+          <div class="fg"><label>Almacén</label>
+            <select id="ord-wh"><option value="01">01 - Principal</option></select></div>
+        </div>
+        <div class="fg" style="margin-bottom:0"><label>Comentarios</label>
+          <input id="ord-comments" type="text" placeholder="Opcional"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">Artículos</div>
+        <div id="ord-lines"></div>
+        <button class="btn btn-ghost" id="btn-add-line" style="margin-top:6px;font-size:13px">+ Agregar línea</button>
+        <div class="totals-bar">
+          <div class="tot-item"><div class="tot-label">Subtotal</div><div class="tot-val" id="tot-sub">Q 0.00</div></div>
+          <div class="tot-item"><div class="tot-label">IVA 12%</div><div class="tot-val" id="tot-tax">Q 0.00</div></div>
+          <div class="tot-item"><div class="tot-label">Total</div><div class="tot-val hi" id="tot-total">Q 0.00</div></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-success" id="btn-create-order">✓ Crear orden en SAP</button>
+        <button class="btn btn-ghost" id="btn-clear-order">Limpiar</button>
+      </div>
+    </div>
+
+    <!-- SALDOS -->
+    <div id="view-saldos" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Saldos de clientes</h1>
+        <p class="page-sub">Cuenta corriente en tiempo real desde SAP Business One</p>
+      </div>
+      <div class="card">
+        <div class="card-label">Buscar cliente</div>
+        <div class="form-grid">
+          <div class="fg"><label>Código o nombre</label>
+            <input id="bal-q" type="text" placeholder="Ej: C-001 o nombre del cliente"></div>
+          <div class="fg" style="display:flex;align-items:flex-end">
+            <button class="btn btn-primary" id="btn-bal-search" style="width:100%">Consultar SAP</button></div>
+        </div>
+        <div class="result-box" id="bal-result" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- CONFIG -->
+    <div id="view-config" class="view">
+      <div class="page-header">
+        <h1 class="page-title">Configuración</h1>
+        <p class="page-sub">Conexión al backend y SAP Service Layer</p>
+      </div>
+      <div class="card">
+        <div id="sap-status" class="sap-ping checking">
+          <div class="dot dot-spin" id="sap-dot"></div>
+          <span id="sap-status-txt">Verificando conexión…</span>
+        </div>
+        <div class="card-label">URL del backend</div>
+        <div class="form-grid cols1">
+          <div class="fg"><label>API Base URL</label>
+            <input id="cfg-api" type="text" placeholder="http://localhost:3000/api" value="http://localhost:3000/api"></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btn-save-config">Guardar y probar conexión</button>
+        </div>
+        <div class="result-box" id="cfg-result" style="display:none;margin-top:14px"></div>
+      </div>
+      <div class="card">
+        <div class="card-label">ℹ️ Información</div>
+        <p style="font-size:13.5px;color:var(--text2);line-height:1.75">
+          Esta PWA se conecta al <strong style="color:var(--text)">backend Node.js</strong> incluido en el repositorio,
+          que actúa como proxy seguro hacia el <strong style="color:var(--text)">SAP Business One Service Layer</strong>.<br><br>
+          Las credenciales SAP (<code style="font-family:var(--mono);background:var(--bg3);padding:1px 7px;border-radius:4px;font-size:12px">.env</code>)
+          viven solo en el servidor — nunca se exponen al navegador.<br><br>
+          <span style="color:var(--text3)">Para gestionar usuarios del portal, edita <code style="font-family:var(--mono);font-size:12px">PORTAL_USERS</code> en el <code style="font-family:var(--mono);font-size:12px">.env</code> del backend.</span>
+        </p>
+      </div>
+    </div>
+
+  </div><!-- app-body -->
+</div><!-- screen-app -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+//  SAP PORTAL — Frontend JS
+// ══════════════════════════════════════════════
+
+let API = localStorage.getItem('sap_api') || 'http://localhost:3000/api';
+let TOKEN = localStorage.getItem('sap_token') || null;
+let ORDER_LINES = [];
+let LINE_ID = 0;
+
+// ── Helpers ───────────────────────────────────
+const fmt = (n) => 'Q ' + Number(n||0).toLocaleString('es-GT',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today = () => new Date().toISOString().split('T')[0];
+
+function toast(msg, type='info'){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type==='ok'?'ok':type==='err'?'err':'info'}`;
+  setTimeout(()=>el.classList.remove('show'), 3200);
+}
+
+function loading(el){ el.style.display='block'; el.innerHTML=`<div class="loading"><div class="spin"></div>Consultando SAP Business One…</div>`; }
+
+async function api(path, opts={}){
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+TOKEN, ...(opts.headers||{}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json();
+  if(!res.ok) throw new Error(data.error || 'Error '+res.status);
+  return data;
+}
+
+// ── AUTH ──────────────────────────────────────
+document.getElementById('btn-login').addEventListener('click', doLogin);
+document.getElementById('inp-pass').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+
+async function doLogin(){
+  const username = document.getElementById('inp-user').value.trim();
+  const password = document.getElementById('inp-pass').value;
+  const err = document.getElementById('login-error');
+  const btn = document.getElementById('btn-login');
+  err.classList.remove('show');
+  if(!username||!password){ err.textContent='Ingresa usuario y contraseña'; err.classList.add('show'); return; }
+  btn.disabled=true; btn.textContent='Ingresando…';
+  try {
+    const data = await fetch(API+'/auth/login',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username,password})
+    });
+    const json = await data.json();
+    if(!data.ok) throw new Error(json.error||'Error');
+    TOKEN = json.token;
+    localStorage.setItem('sap_token', TOKEN);
+    const nav_name = json.username;
+    document.getElementById('nav-uname').textContent = nav_name;
+    document.getElementById('nav-avatar').textContent = nav_name[0].toUpperCase();
+    document.getElementById('screen-login').classList.remove('active');
+    document.getElementById('screen-app').classList.add('active');
+    initApp();
+  } catch(e){
+    err.textContent = e.message==='Failed to fetch'?'No se puede conectar al servidor':e.message;
+    err.classList.add('show');
+    document.getElementById('inp-pass').value='';
+  }
+  btn.disabled=false; btn.textContent='Ingresar';
+}
+
+document.getElementById('btn-logout').addEventListener('click', ()=>{
+  TOKEN=null; localStorage.removeItem('sap_token');
+  document.getElementById('screen-app').classList.remove('active');
+  document.getElementById('screen-login').classList.add('active');
+  document.getElementById('inp-user').value='';
+  document.getElementById('inp-pass').value='';
+});
+
+// ── NAV ───────────────────────────────────────
+document.querySelectorAll('.nav-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.nav-tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('view-'+t.dataset.view).classList.add('active');
+  });
+});
+
+// ── INIT APP ──────────────────────────────────
+async function initApp(){
+  document.getElementById('dash-date').textContent = new Date().toLocaleDateString('es-GT',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  document.getElementById('ord-due').value = today();
+  document.getElementById('cfg-api').value = API;
+  initOrderLines();
+  loadDashboard();
+  checkSap();
+  loadWarehouses();
+}
+
+// ── DASHBOARD ─────────────────────────────────
+async function loadDashboard(){
+  try {
+    // Órdenes recientes
+    const orders = await api('/orders?top=10');
+    document.getElementById('kpi-orders').textContent = orders.filter(o=>o.status==='open').length;
+    const tbody = orders.map(o=>`
+      <tr>
+        <td class="mono">${o.docNum}</td>
+        <td>${o.cardName}</td>
+        <td class="mono">${o.docDate||''}</td>
+        <td class="mono">${fmt(o.total)}</td>
+        <td><span class="badge badge-${o.status==='open'?'blue':'green'}">${o.status==='open'?'Abierta':'Cerrada'}</span></td>
+      </tr>`).join('');
+    document.getElementById('dash-orders-wrap').innerHTML =
+      `<table class="tbl"><thead><tr><th>N° Orden</th><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead><tbody>${tbody}</tbody></table>`;
+  } catch(e){ document.getElementById('dash-orders-wrap').innerHTML=`<div class="result-empty">Error cargando órdenes: ${e.message}</div>`; }
+
+  // Items (approx, /all top=5 para contar)
+  try {
+    const items = await api('/inventory/all?top=200');
+    document.getElementById('kpi-items').textContent = items.length;
+    document.getElementById('kpi-low').textContent = items.filter(i=>i.totalStock<=10).length;
+  } catch(_){}
+}
+
+// ── INVENTARIO ────────────────────────────────
+async function loadWarehouses(){
+  // Podrías cargar almacenes desde SAP: /Warehouses
+  // Por ahora precargamos los más comunes
+  const whs = [{code:'01',name:'Almacén principal'},{code:'02',name:'Almacén secundario'},{code:'03',name:'Bodega despacho'}];
+  ['inv-wh','ord-wh'].forEach(id=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    if(id==='inv-wh') sel.innerHTML = '<option value="">Todos</option>';
+    else sel.innerHTML = '';
+    whs.forEach(w=>{ const o=document.createElement('option'); o.value=w.code; o.textContent=`${w.code} - ${w.name}`; sel.appendChild(o); });
+  });
+}
+
+document.getElementById('btn-inv-search').addEventListener('click', async ()=>{
+  const q  = document.getElementById('inv-q').value.trim().toUpperCase();
+  const wh = document.getElementById('inv-wh').value;
+  const box = document.getElementById('inv-result');
+  if(!q){ toast('Ingresa un código o nombre','err'); return; }
+  loading(box);
+  try {
+    const items = await api(`/inventory/search?q=${encodeURIComponent(q)}${wh?'&warehouse='+wh:''}`);
+    renderStock(box, items, wh);
+  } catch(e){ box.innerHTML=`<div class="result-empty">${e.message}</div>`; }
+});
+
+document.getElementById('btn-inv-all').addEventListener('click', async ()=>{
+  const wh = document.getElementById('inv-wh').value;
+  const box = document.getElementById('inv-result');
+  loading(box);
+  try {
+    const items = await api(`/inventory/all${wh?'?warehouse='+wh:''}`);
+    renderStock(box, items, wh);
+  } catch(e){ box.innerHTML=`<div class="result-empty">${e.message}</div>`; }
+});
+
+function renderStock(box, items, wh){
+  if(!items.length){ box.innerHTML=`<div class="result-empty">Sin resultados</div>`; return; }
+  box.innerHTML = items.map(item=>{
+    const whData = wh ? (item.warehouses.find(w=>w.warehouse===wh)||item.warehouses[0]) : item.warehouses[0];
+    const qty = whData ? whData.inStock : item.totalStock;
+    const cls = qty===0?'qty-zero':qty<=10?'qty-low':'qty-ok';
+    const icon = qty===0?'⊘':qty<=10?'⚠':'📦';
+    return `<div class="stock-row">
+      <div class="stock-icon">${icon}</div>
+      <div><div class="stock-name">${item.name}</div>
+        <div class="stock-meta">${item.code}${whData?' · Almacén '+whData.warehouse:''}</div></div>
+      <div class="stock-qty"><div class="qty-num ${cls}">${qty}</div><div class="qty-unit">${item.unit}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── ORDEN DE VENTA ────────────────────────────
+document.getElementById('ord-bp').addEventListener('blur', async()=>{
+  const code = document.getElementById('ord-bp').value.trim().toUpperCase();
+  if(!code) return;
+  try {
+    const c = await api(`/customers/${code}`);
+    document.getElementById('ord-bpname').value = c.name;
+    toast('Cliente: '+c.name,'info');
+  } catch(e){ document.getElementById('ord-bpname').value='No encontrado'; }
+});
+
+function initOrderLines(){ ORDER_LINES=[]; LINE_ID=0; addLine(); }
+
+function addLine(){
+  LINE_ID++;
+  ORDER_LINES.push({id:LINE_ID, code:'', qty:1, price:0});
+  renderLines();
+}
+
+function renderLines(){
+  const c = document.getElementById('ord-lines');
+  c.innerHTML = ORDER_LINES.map((l,i)=>`
+    <div class="line-row" id="lr-${l.id}">
+      <div><${i===0?'div class="lbl">Artículo</div>':''}
+        <input type="text" value="${l.code}" placeholder="Código" style="text-transform:uppercase;width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13.5px;outline:none"
+          oninput="ORDER_LINES.find(x=>x.id==${l.id}).code=this.value.toUpperCase()"
+          onblur="fillItemPrice(${l.id})"></div>
+      <div><${i===0?'div class="lbl">Cant.</div>':''}
+        <input type="number" min="1" value="${l.qty}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:center"
+          oninput="ORDER_LINES.find(x=>x.id==${l.id}).qty=parseFloat(this.value)||0; updateTotals()"></div>
+      <div><${i===0?'div class="lbl">Precio unit.</div>':''}
+        <input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="0.00" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:right"
+          oninput="ORDER_LINES.find(x=>x.id==${l.id}).price=parseFloat(this.value)||0; updateTotals()"></div>
+      <div style="${i===0?'padding-top:22px':''}">
+        <button class="btn-icon" onclick="removeLine(${l.id})">✕</button></div>
+    </div>`).join('');
+  updateTotals();
+}
+
+async function fillItemPrice(id){
+  const l = ORDER_LINES.find(x=>x.id===id);
+  if(!l||!l.code) return;
+  try {
+    const item = await api(`/inventory/item/${l.code}`);
+    // SAP puede devolver precios en ItemPrices; usamos el primero disponible
+    l.price = item.price || 0;
+    toast('Artículo cargado: '+item.name, 'info');
+    renderLines();
+  } catch(_){}
+}
+
+function removeLine(id){
+  if(ORDER_LINES.length<=1){ toast('Mínimo una línea','err'); return; }
+  ORDER_LINES = ORDER_LINES.filter(l=>l.id!==id); renderLines();
+}
+
+function updateTotals(){
+  const sub = ORDER_LINES.reduce((s,l)=>s+(l.qty*l.price),0);
+  const tax = sub*.12;
+  document.getElementById('tot-sub').textContent = fmt(sub);
+  document.getElementById('tot-tax').textContent = fmt(tax);
+  document.getElementById('tot-total').textContent = fmt(sub+tax);
+}
+
+document.getElementById('btn-add-line').addEventListener('click', addLine);
+
+document.getElementById('btn-create-order').addEventListener('click', async()=>{
+  const cardCode = document.getElementById('ord-bp').value.trim().toUpperCase();
+  const bpName   = document.getElementById('ord-bpname').value;
+  const docDue   = document.getElementById('ord-due').value;
+  const wh       = document.getElementById('ord-wh').value;
+  const comments = document.getElementById('ord-comments').value;
+
+  if(!cardCode){ toast('Ingresa el código del cliente','err'); return; }
+  if(bpName==='No encontrado'){ toast('Cliente no encontrado en SAP','err'); return; }
+  const lines = ORDER_LINES.filter(l=>l.code&&l.qty>0&&l.price>0);
+  if(!lines.length){ toast('Agrega artículos con código, cantidad y precio','err'); return; }
+
+  const btn = document.getElementById('btn-create-order');
+  btn.disabled=true; btn.textContent='Creando en SAP…';
+  try {
+    const order = await api('/orders',{
+      method:'POST',
+      body:{ cardCode, docDueDate:docDue, comments,
+        lines: lines.map(l=>({itemCode:l.code,quantity:l.qty,unitPrice:l.price,warehouseCode:wh})) }
+    });
+    toast(`✓ Orden #${order.docNum} creada en SAP`,'ok');
+    document.getElementById('btn-clear-order').click();
+    loadDashboard();
+  } catch(e){ toast('Error: '+e.message,'err'); }
+  btn.disabled=false; btn.textContent='✓ Crear orden en SAP';
+});
+
+document.getElementById('btn-clear-order').addEventListener('click',()=>{
+  document.getElementById('ord-bp').value='';
+  document.getElementById('ord-bpname').value='';
+  document.getElementById('ord-comments').value='';
+  initOrderLines();
+});
+
+// ── SALDOS ────────────────────────────────────
+document.getElementById('btn-bal-search').addEventListener('click', async()=>{
+  const q   = document.getElementById('bal-q').value.trim();
+  const box = document.getElementById('bal-result');
+  if(!q){ toast('Ingresa código o nombre','err'); return; }
+  loading(box);
+  try {
+    let clients;
+    // Intentar por código exacto primero
+    try { clients = [await api(`/customers/${q.toUpperCase()}`)]; }
+    catch(_){ clients = await api(`/customers/search?q=${encodeURIComponent(q)}`); }
+
+    if(!clients.length){ box.innerHTML=`<div class="result-empty">Cliente no encontrado en SAP</div>`; return; }
+    box.innerHTML = clients.map(c=>`
+      <div style="margin-bottom:14px">
+        <div class="bal-header">
+          <div>
+            <div class="bal-name">${c.name}</div>
+            <div class="bal-code">${c.code} · ${c.currency} · <span class="badge badge-${c.active?'green':'gray'}">${c.active?'Activo':'Inactivo'}</span></div>
+          </div>
+          <div class="bal-amount">
+            <div class="bal-num ${c.balance===0?'clear':'owe'}">${fmt(c.balance)}</div>
+            <div class="bal-lbl">Saldo pendiente</div>
+          </div>
+        </div>
+        <table class="tbl" style="font-size:12.5px">
+          <thead><tr><th>Límite crédito</th><th>Crédito disponible</th><th>Uso</th><th>Estado</th></tr></thead>
+          <tbody><tr>
+            <td class="mono">${fmt(c.creditLimit)}</td>
+            <td class="mono">${fmt(c.available)}</td>
+            <td><span class="badge badge-${c.creditUsed>=90?'red':c.creditUsed>=60?'amber':'green'}">${c.creditUsed}%</span></td>
+            <td><span class="badge badge-${c.status==='sin_deuda'?'green':c.status==='limite_excedido'?'red':'amber'}">${{sin_deuda:'Sin deuda',con_saldo:'Con saldo',limite_excedido:'Límite excedido'}[c.status]}</span></td>
+          </tr></tbody>
+        </table>
+      </div>`).join('');
+  } catch(e){ box.innerHTML=`<div class="result-empty">Error: ${e.message}</div>`; }
+});
+
+// ── CONFIG ────────────────────────────────────
+document.getElementById('btn-save-config').addEventListener('click', async()=>{
+  const url = document.getElementById('cfg-api').value.trim().replace(/\/$/,'');
+  if(!url){ toast('Ingresa la URL del backend','err'); return; }
+  API = url;
+  localStorage.setItem('sap_api', API);
+  checkSap();
+});
+
+async function checkSap(){
+  const box   = document.getElementById('sap-status');
+  const dot   = document.getElementById('sap-dot');
+  const txt   = document.getElementById('sap-status-txt');
+  const cbox  = document.getElementById('cfg-result');
+  box.className='sap-ping checking'; dot.className='dot dot-spin'; txt.textContent='Verificando conexión…';
+  try {
+    const ping = await fetch(API.replace('/api','')+'/api/sap/ping',{headers:{'Authorization':'Bearer '+TOKEN}});
+    const data = await ping.json();
+    if(data.ok){
+      box.className='sap-ping ok'; dot.className='dot dot-on';
+      txt.textContent=`Conectado a SAP — ${data.company}`;
+      cbox.style.display='block';
+      cbox.innerHTML=`<div style="color:var(--green);font-size:13px">✓ Service Layer OK · ${data.company} · ${data.version}</div>`;
+    } else throw new Error(data.error);
+  } catch(e){
+    box.className='sap-ping fail'; dot.className='dot dot-off';
+    txt.textContent='Sin conexión — '+e.message;
+    cbox.style.display='block';
+    cbox.innerHTML=`<div style="color:var(--text2);font-size:13px">Verifica que el backend esté corriendo en <code style="font-family:var(--mono)">${API}</code></div>`;
+  }
+}
+
+// ── AUTO-LOGIN si hay token ───────────────────
+if(TOKEN){
+  const parts = TOKEN.split('.');
+  if(parts.length===3){
+    try {
+      const payload = JSON.parse(atob(parts[1]));
+      if(payload.exp * 1000 > Date.now()){
+        document.getElementById('nav-uname').textContent = payload.username;
+        document.getElementById('nav-avatar').textContent = payload.username[0].toUpperCase();
+        document.getElementById('screen-login').classList.remove('active');
+        document.getElementById('screen-app').classList.add('active');
+        initApp();
+      } else { TOKEN=null; localStorage.removeItem('sap_token'); }
+    } catch(_){ TOKEN=null; localStorage.removeItem('sap_token'); }
+  }
+}
+
+// ── PWA Service Worker ────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
