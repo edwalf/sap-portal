@@ -592,33 +592,72 @@ function addLine(){
 function renderLines(){
   const c = document.getElementById('ord-lines');
   c.innerHTML = ORDER_LINES.map((l,i)=>`
-    <div class="line-row" id="lr-${l.id}">
-      <div><${i===0?'div class="lbl">Artículo</div>':''}
-        <input type="text" value="${l.code}" placeholder="Código" style="text-transform:uppercase;width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13.5px;outline:none"
-          oninput="ORDER_LINES.find(x=>x.id==${l.id}).code=this.value.toUpperCase()"
-          onblur="fillItemPrice(${l.id})"></div>
-      <div><${i===0?'div class="lbl">Cant.</div>':''}
-        <input type="number" min="1" value="${l.qty}" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:center"
-          oninput="ORDER_LINES.find(x=>x.id==${l.id}).qty=parseFloat(this.value)||0; updateTotals()"></div>
-      <div><${i===0?'div class="lbl">Precio unit.</div>':''}
-        <input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="0.00" style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:right"
-          oninput="ORDER_LINES.find(x=>x.id==${l.id}).price=parseFloat(this.value)||0; updateTotals()"></div>
-      <div style="${i===0?'padding-top:22px':''}">
-        <button class="btn-icon" onclick="removeLine(${l.id})">✕</button></div>
+    <div style="margin-bottom:10px" id="lr-${l.id}">
+      ${i===0?`<div style="display:grid;grid-template-columns:2fr 90px 120px 36px;gap:8px;margin-bottom:4px">
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:500">Artículo</div>
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:500">Cant.</div>
+        <div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:500">Precio unit.</div>
+        <div></div>
+      </div>`:''}
+      <div style="display:grid;grid-template-columns:2fr 90px 120px 36px;gap:8px;align-items:start">
+        <div style="position:relative">
+          <input type="text" value="${l.code}" placeholder="Busca código o nombre..."
+            style="text-transform:uppercase;width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:var(--font);font-size:13px;outline:none"
+            oninput="searchItem(${l.id},this.value)"
+            onblur="setTimeout(()=>closeSugg(${l.id}),200)">
+          <div id="sugg-${l.id}" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius-sm);z-index:50;max-height:180px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+          ${l.name?`<div style="font-size:11px;color:var(--text2);margin-top:3px;padding-left:2px">${l.name}</div>`:''}
+        </div>
+        <input type="number" min="1" value="${l.qty}"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:center"
+          oninput="ORDER_LINES.find(x=>x.id==${l.id}).qty=parseFloat(this.value)||0; updateTotals()">
+        <input type="number" min="0" step="0.01" value="${l.price||''}" placeholder="0.00"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;color:var(--text);font-family:var(--mono);font-size:13.5px;outline:none;text-align:right"
+          oninput="ORDER_LINES.find(x=>x.id==${l.id}).price=parseFloat(this.value)||0; updateTotals()">
+        <button class="btn-icon" onclick="removeLine(${l.id})">✕</button>
+      </div>
     </div>`).join('');
   updateTotals();
 }
 
-async function fillItemPrice(id){
+let searchTimers = {};
+async function searchItem(id, val){
+  ORDER_LINES.find(x=>x.id===id).code = val.toUpperCase();
+  const sugg = document.getElementById('sugg-'+id);
+  clearTimeout(searchTimers[id]);
+  if(!val || val.length < 2){ sugg.style.display='none'; return; }
+  searchTimers[id] = setTimeout(async()=>{
+    try {
+      const items = await api(`/inventory/search?q=${encodeURIComponent(val)}`);
+      if(!items.length){ sugg.style.display='none'; return; }
+      sugg.style.display='block';
+      sugg.innerHTML = items.slice(0,8).map(it=>`
+        <div onclick="selectItem(${id},'${it.code}','${it.name.replace(/'/g,"\\'")}',${it.warehouses[0]?.inStock||0})"
+          style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;transition:background .1s"
+          onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+          <span style="color:var(--accent);font-family:var(--mono);font-size:12px">${it.code}</span>
+          <span style="color:var(--text);margin-left:8px">${it.name}</span>
+          <span style="float:right;font-family:var(--mono);font-size:11px;color:${it.totalStock<=0?'var(--red)':it.totalStock<=10?'var(--amber)':'var(--green)'}">${it.totalStock} uds</span>
+        </div>`).join('');
+    } catch(_){ sugg.style.display='none'; }
+  }, 280);
+}
+
+async function selectItem(id, code, name, stock){
   const l = ORDER_LINES.find(x=>x.id===id);
-  if(!l||!l.code) return;
+  l.code = code; l.name = name;
+  closeSugg(id);
   try {
-    const item = await api(`/inventory/item/${l.code}`);
-    // SAP puede devolver precios en ItemPrices; usamos el primero disponible
+    const item = await api(`/inventory/price/${code}`);
     l.price = item.price || 0;
-    toast('Artículo cargado: '+item.name, 'info');
-    renderLines();
+    toast(`${name} — Q${l.price.toFixed(2)}`,'info');
   } catch(_){}
+  renderLines();
+}
+
+function closeSugg(id){
+  const s = document.getElementById('sugg-'+id);
+  if(s) s.style.display='none';
 }
 
 function removeLine(id){

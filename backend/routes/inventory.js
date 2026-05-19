@@ -166,3 +166,37 @@ function handleError(err, res) {
 }
 
 module.exports = router;
+
+// GET /api/inventory/price/:code?priceList=1
+// Devuelve precio de lista de un artículo desde ITM1
+router.get('/price/:code', async (req, res) => {
+  try {
+    const code      = req.params.code.toUpperCase();
+    const priceList = parseInt(req.query.priceList) || 1;
+
+    const result = await query(`
+      SELECT
+        T0.ItemCode,
+        T0.ItemName,
+        T0.SalUnitMsr AS SalesUnit,
+        T1.Price
+      FROM OITM T0
+      LEFT JOIN ITM1 T1 ON T0.ItemCode = T1.ItemCode AND T1.PriceList = @priceList
+      WHERE T0.ItemCode = @code AND T0.Deleted = 'N' AND T0.SellItem = 'Y'
+    `, {
+      code:      { type: sql.NVarChar, value: code },
+      priceList: { type: sql.Int,      value: priceList },
+    });
+
+    if (!result.recordset.length)
+      return res.status(404).json({ error: 'Artículo no encontrado' });
+
+    const r = result.recordset[0];
+    res.json({
+      code:  r.ItemCode,
+      name:  r.ItemName,
+      unit:  r.SalesUnit || 'UND',
+      price: r.Price || 0,
+    });
+  } catch (err) { handleError(err, res); }
+});

@@ -1,5 +1,4 @@
-// routes/orders.js
-// Órdenes de venta SAP B1 9.3 via SQL Server
+// routes/orders.js — SAP B1 9.3 columnas verificadas
 const router              = require('express').Router();
 const auth                = require('../middleware/auth');
 const { query, sql, getPool } = require('../config/db');
@@ -26,7 +25,7 @@ router.get('/', async (req, res) => {
         T0.DocStatus,
         T0.Comments
       FROM ORDR T0
-      WHERE T0.Canceled = 'N'
+      WHERE T0.CANCELED = 'N'
         ${ccFilter}
       ORDER BY T0.DocDate DESC, T0.DocNum DESC
     `, cardCode ? { cardCode: { type: sql.NVarChar, value: cardCode } } : {});
@@ -49,10 +48,8 @@ router.get('/', async (req, res) => {
 router.get('/:docEntry', async (req, res) => {
   try {
     const docEntry = parseInt(req.params.docEntry);
-
     const header = await query(`
-      SELECT
-        DocEntry, DocNum, CardCode, CardName,
+      SELECT DocEntry, DocNum, CardCode, CardName,
         CONVERT(VARCHAR, DocDate,    23) AS DocDate,
         CONVERT(VARCHAR, DocDueDate, 23) AS DocDueDate,
         DocTotal, VatSum, DocStatus, Comments
@@ -70,24 +67,15 @@ router.get('/:docEntry', async (req, res) => {
 
     const h = header.recordset[0];
     res.json({
-      docEntry: h.DocEntry,
-      docNum:   h.DocNum,
-      cardCode: h.CardCode,
-      cardName: h.CardName,
-      docDate:  h.DocDate,
-      dueDate:  h.DocDueDate,
-      total:    h.DocTotal,
-      vatTotal: h.VatSum,
-      status:   h.DocStatus,
-      comments: h.Comments,
+      docEntry: h.DocEntry, docNum: h.DocNum,
+      cardCode: h.CardCode, cardName: h.CardName,
+      docDate: h.DocDate,   dueDate: h.DocDueDate,
+      total: h.DocTotal,    vatTotal: h.VatSum,
+      status: h.DocStatus,  comments: h.Comments,
       lines: lines.recordset.map(l => ({
-        lineNum:   l.LineNum,
-        itemCode:  l.ItemCode,
-        itemName:  l.ItemName,
-        quantity:  l.Quantity,
-        unitPrice: l.UnitPrice,
-        lineTotal: l.LineTotal,
-        warehouse: l.WhsCode,
+        lineNum: l.LineNum, itemCode: l.ItemCode, itemName: l.ItemName,
+        quantity: l.Quantity, unitPrice: l.UnitPrice,
+        lineTotal: l.LineTotal, warehouse: l.WhsCode,
       })),
     });
   } catch (err) { handleError(err, res); }
@@ -96,9 +84,8 @@ router.get('/:docEntry', async (req, res) => {
 // POST /api/orders
 router.post('/', async (req, res) => {
   const { cardCode, docDueDate, comments, lines } = req.body;
-
-  if (!cardCode)       return res.status(400).json({ error: 'cardCode requerido' });
-  if (!lines?.length)  return res.status(400).json({ error: 'Líneas requeridas' });
+  if (!cardCode)      return res.status(400).json({ error: 'cardCode requerido' });
+  if (!lines?.length) return res.status(400).json({ error: 'Líneas requeridas' });
 
   const pool        = await getPool();
   const transaction = new mssql.Transaction(pool);
@@ -106,38 +93,32 @@ router.post('/', async (req, res) => {
   try {
     await transaction.begin();
 
-    // 1. Obtener datos del cliente
+    // 1. Validar cliente
     const bpReq = new mssql.Request(transaction);
     const bpRes = await bpReq
       .input('cardCode', mssql.NVarChar, cardCode.toUpperCase())
       .query(`SELECT CardCode, CardName, Currency FROM OCRD WHERE CardCode = @cardCode AND CardType = 'C'`);
-
-    if (!bpRes.recordset.length)
-      throw new Error(`Cliente ${cardCode} no encontrado`);
+    if (!bpRes.recordset.length) throw new Error(`Cliente ${cardCode} no encontrado`);
     const bp = bpRes.recordset[0];
 
-    // 2. Obtener siguiente número de serie para órdenes de venta (ObjType=17)
+    // 2. Obtener numerador SAP
     const numReq = new mssql.Request(transaction);
     const numRes = await numReq.query(`
-      SELECT TOP 1 NextNumber, Series
-      FROM NNM1
-      WHERE ObjectCode = '17' AND Locked = 'N'
-      ORDER BY Series
+      SELECT TOP 1 NextNumber, Series FROM NNM1
+      WHERE ObjectCode = '17' AND Locked = 'N' ORDER BY Series
     `);
-    if (!numRes.recordset.length)
-      throw new Error('No se pudo obtener numerador SAP para órdenes de venta');
-
+    if (!numRes.recordset.length) throw new Error('No se pudo obtener numerador SAP');
     const nextNum = numRes.recordset[0].NextNumber;
     const series  = numRes.recordset[0].Series;
 
-    // 3. Calcular totales
-    const subTotal = lines.reduce((s, l) => s + (l.quantity * l.unitPrice), 0);
-    const vatSum   = Math.round(subTotal * 0.12 * 100) / 100;
-    const docTotal = Math.round((subTotal + vatSum) * 100) / 100;
-    const today    = new Date().toISOString().split('T')[0];
-    const dueDate  = docDueDate || today;
+    // 3. Totales
+    const docSubTot = lines.reduce((s, l) => s + (l.quantity * l.unitPrice), 0);
+    const vatSum    = Math.round(docSubTot * 0.12 * 100) / 100;
+    const docTotal  = Math.round((docSubTot + vatSum) * 100) / 100;
+    const today     = new Date().toISOString().split('T')[0];
+    const dueDate   = docDueDate || today;
 
-    // 4. Insertar cabecera ORDR
+    // 4. Insertar cabecera ORDR (sin SubTotal — columna no existe en esta versión)
     const hReq = new mssql.Request(transaction);
     const hRes = await hReq
       .input('docNum',   mssql.Int,      nextNum)
@@ -147,7 +128,6 @@ router.post('/', async (req, res) => {
       .input('docDate',  mssql.DateTime, new Date(today))
       .input('dueDate',  mssql.DateTime, new Date(dueDate))
       .input('comments', mssql.NVarChar, comments || '')
-      .input('subTotal', mssql.Money,    subTotal)
       .input('vatSum',   mssql.Money,    vatSum)
       .input('docTotal', mssql.Money,    docTotal)
       .input('currency', mssql.NVarChar, bp.Currency || 'GTQ')
@@ -155,16 +135,14 @@ router.post('/', async (req, res) => {
         INSERT INTO ORDR (
           DocNum, Series, CardCode, CardName,
           DocDate, DocDueDate, TaxDate,
-          DocStatus, Canceled, DocType,
-          Comments, DocCur,
-          SubTotal, VatSum, DocTotal,
+          DocStatus, CANCELED, DocType,
+          Comments, DocCur, VatSum, DocTotal,
           ObjType, UserSign
         ) VALUES (
           @docNum, @series, @cardCode, @cardName,
           @docDate, @dueDate, @docDate,
           'O', 'N', 'I',
-          @comments, @currency,
-          @subTotal, @vatSum, @docTotal,
+          @comments, @currency, @vatSum, @docTotal,
           '17', 1
         );
         SELECT SCOPE_IDENTITY() AS DocEntry;
@@ -198,22 +176,14 @@ router.post('/', async (req, res) => {
         `);
     }
 
-    // 6. Actualizar numerador SAP
+    // 6. Actualizar numerador
     const nReq = new mssql.Request(transaction);
     await nReq
       .input('series', mssql.SmallInt, series)
       .query(`UPDATE NNM1 SET NextNumber = NextNumber + 1 WHERE Series = @series`);
 
     await transaction.commit();
-
-    res.status(201).json({
-      docEntry,
-      docNum:   nextNum,
-      cardCode: bp.CardCode,
-      cardName: bp.CardName,
-      docTotal,
-      status:   'open',
-    });
+    res.status(201).json({ docEntry, docNum: nextNum, cardCode: bp.CardCode, cardName: bp.CardName, docTotal, status: 'open' });
 
   } catch (err) {
     await transaction.rollback().catch(() => {});
