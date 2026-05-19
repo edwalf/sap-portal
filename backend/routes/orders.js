@@ -1,10 +1,25 @@
-// routes/orders.js — SAP B1 9.3 columnas verificadas
+// routes/orders.js — SAP B1 9.3, DocEntry generado manualmente
 const router              = require('express').Router();
 const auth                = require('../middleware/auth');
 const { query, sql, getPool } = require('../config/db');
 const mssql               = require('mssql');
 
 router.use(auth);
+
+// Obtiene el próximo DocEntry disponible
+async function getNextDocEntry(transaction) {
+  const req = new mssql.Request(transaction);
+  const res = await req.query(`
+    SELECT ISNULL(MAX(DocEntry),0) + 1 AS NextDocEntry
+    FROM (
+      SELECT DocEntry FROM ORDR
+      UNION ALL SELECT DocEntry FROM OINV
+      UNION ALL SELECT DocEntry FROM OPCH
+      UNION ALL SELECT DocEntry FROM ORCT
+    ) T
+  `);
+  return res.recordset[0].NextDocEntry;
+}
 
 // GET /api/orders?top=20&cardCode=C001
 router.get('/', async (req, res) => {
@@ -15,30 +30,20 @@ router.get('/', async (req, res) => {
 
     const result = await query(`
       SELECT TOP ${top}
-        T0.DocEntry,
-        T0.DocNum,
-        T0.CardCode,
-        T0.CardName,
+        T0.DocEntry, T0.DocNum, T0.CardCode, T0.CardName,
         CONVERT(VARCHAR, T0.DocDate,    23) AS DocDate,
         CONVERT(VARCHAR, T0.DocDueDate, 23) AS DocDueDate,
-        T0.DocTotal,
-        T0.DocStatus,
-        T0.Comments
+        T0.DocTotal, T0.DocStatus, T0.Comments
       FROM ORDR T0
-      WHERE T0.CANCELED = 'N'
-        ${ccFilter}
+      WHERE T0.CANCELED = 'N' ${ccFilter}
       ORDER BY T0.DocDate DESC, T0.DocNum DESC
     `, cardCode ? { cardCode: { type: sql.NVarChar, value: cardCode } } : {});
 
     res.json(result.recordset.map(o => ({
-      docEntry: o.DocEntry,
-      docNum:   o.DocNum,
-      cardCode: o.CardCode,
-      cardName: o.CardName,
-      docDate:  o.DocDate,
-      dueDate:  o.DocDueDate,
-      total:    o.DocTotal,
-      status:   o.DocStatus === 'O' ? 'open' : 'closed',
+      docEntry: o.DocEntry, docNum: o.DocNum,
+      cardCode: o.CardCode, cardName: o.CardName,
+      docDate: o.DocDate,   dueDate: o.DocDueDate,
+      total: o.DocTotal,    status: o.DocStatus === 'O' ? 'open' : 'closed',
       comments: o.Comments,
     })));
   } catch (err) { handleError(err, res); }
@@ -73,9 +78,10 @@ router.get('/:docEntry', async (req, res) => {
       total: h.DocTotal,    vatTotal: h.VatSum,
       status: h.DocStatus,  comments: h.Comments,
       lines: lines.recordset.map(l => ({
-        lineNum: l.LineNum, itemCode: l.ItemCode, itemName: l.ItemName,
-        quantity: l.Quantity, unitPrice: l.UnitPrice,
-        lineTotal: l.LineTotal, warehouse: l.WhsCode,
+        lineNum: l.LineNum,   itemCode: l.ItemCode,
+        itemName: l.ItemName, quantity: l.Quantity,
+        unitPrice: l.UnitPrice, lineTotal: l.LineTotal,
+        warehouse: l.WhsCode,
       })),
     });
   } catch (err) { handleError(err, res); }
@@ -101,7 +107,7 @@ router.post('/', async (req, res) => {
     if (!bpRes.recordset.length) throw new Error(`Cliente ${cardCode} no encontrado`);
     const bp = bpRes.recordset[0];
 
-    // 2. Obtener numerador SAP
+    // 2. Obtener numerador SAP (DocNum)
     const numReq = new mssql.Request(transaction);
     const numRes = await numReq.query(`
       SELECT TOP 1 NextNumber, Series FROM NNM1
@@ -111,16 +117,20 @@ router.post('/', async (req, res) => {
     const nextNum = numRes.recordset[0].NextNumber;
     const series  = numRes.recordset[0].Series;
 
-    // 3. Totales
+    // 3. Obtener DocEntry
+    const docEntry = await getNextDocEntry(transaction);
+
+    // 4. Calcular totales
     const docSubTot = lines.reduce((s, l) => s + (l.quantity * l.unitPrice), 0);
     const vatSum    = Math.round(docSubTot * 0.12 * 100) / 100;
     const docTotal  = Math.round((docSubTot + vatSum) * 100) / 100;
     const today     = new Date().toISOString().split('T')[0];
     const dueDate   = docDueDate || today;
 
-    // 4. Insertar cabecera ORDR (sin SubTotal — columna no existe en esta versión)
+    // 5. Insertar cabecera ORDR
     const hReq = new mssql.Request(transaction);
-    const hRes = await hReq
+    await hReq
+      .input('docEntry', mssql.Int,      docEntry)
       .input('docNum',   mssql.Int,      nextNum)
       .input('series',   mssql.SmallInt, series)
       .input('cardCode', mssql.NVarChar, bp.CardCode)
@@ -133,24 +143,21 @@ router.post('/', async (req, res) => {
       .input('currency', mssql.NVarChar, bp.Currency || 'GTQ')
       .query(`
         INSERT INTO ORDR (
-          DocNum, Series, CardCode, CardName,
+          DocEntry, DocNum, Series, CardCode, CardName,
           DocDate, DocDueDate, TaxDate,
           DocStatus, CANCELED, DocType,
           Comments, DocCur, VatSum, DocTotal,
           ObjType, UserSign
         ) VALUES (
-          @docNum, @series, @cardCode, @cardName,
+          @docEntry, @docNum, @series, @cardCode, @cardName,
           @docDate, @dueDate, @docDate,
           'O', 'N', 'I',
           @comments, @currency, @vatSum, @docTotal,
           '17', 1
-        );
-        SELECT SCOPE_IDENTITY() AS DocEntry;
+        )
       `);
 
-    const docEntry = Math.round(hRes.recordset[0].DocEntry);
-
-    // 5. Insertar líneas RDR1
+    // 6. Insertar líneas RDR1
     for (let i = 0; i < lines.length; i++) {
       const l     = lines[i];
       const total = Math.round(l.quantity * l.unitPrice * 100) / 100;
@@ -176,14 +183,19 @@ router.post('/', async (req, res) => {
         `);
     }
 
-    // 6. Actualizar numerador
+    // 7. Actualizar numerador SAP
     const nReq = new mssql.Request(transaction);
     await nReq
       .input('series', mssql.SmallInt, series)
       .query(`UPDATE NNM1 SET NextNumber = NextNumber + 1 WHERE Series = @series`);
 
     await transaction.commit();
-    res.status(201).json({ docEntry, docNum: nextNum, cardCode: bp.CardCode, cardName: bp.CardName, docTotal, status: 'open' });
+
+    res.status(201).json({
+      docEntry, docNum: nextNum,
+      cardCode: bp.CardCode, cardName: bp.CardName,
+      docTotal, status: 'open',
+    });
 
   } catch (err) {
     await transaction.rollback().catch(() => {});
