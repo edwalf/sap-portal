@@ -1,136 +1,168 @@
 // routes/inventory.js
-// Consulta existencias en SAP Business One Service Layer
-// Endpoints relevantes:
-//   GET /b1s/v1/Items('CODE')                  — un artículo
-//   GET /b1s/v1/Items?$filter=...              — búsqueda
-//   GET /b1s/v1/ItemWarehouseInfoCollection    — stock por almacén
+// Columnas verificadas en SAP B1 9.3 — OITM, OITW, OWHS
+const router         = require('express').Router();
+const auth           = require('../middleware/auth');
+const { query, sql } = require('../config/db');
 
-const router    = require('express').Router();
-const auth      = require('../middleware/auth');
-const { sapClient } = require('../config/sap');
-
-// Todos los endpoints requieren JWT
 router.use(auth);
 
-// ── GET /api/inventory/item/:code ──────────────────────────────
-// Devuelve datos + stock total del artículo
+// GET /api/inventory/item/:code
 router.get('/item/:code', async (req, res) => {
   try {
     const code = req.params.code.toUpperCase();
+    const result = await query(`
+      SELECT
+        T0.ItemCode,
+        T0.ItemName,
+        T0.OnHand      AS TotalStock,
+        T0.IsCommited  AS Committed,
+        T0.OnOrder,
+        T0.SalUnitMsr  AS SalesUnit,
+        T2.WhsCode,
+        T1.WhsName,
+        T2.OnHand      AS WhsStock,
+        T2.IsCommited  AS WhsCommitted,
+        T2.OnOrder     AS WhsOnOrder,
+        (T2.OnHand - T2.IsCommited) AS Available
+      FROM OITM T0
+      LEFT JOIN OITW T2 ON T0.ItemCode = T2.ItemCode
+      LEFT JOIN OWHS T1 ON T2.WhsCode  = T1.WhsCode
+      WHERE T0.ItemCode = @code
+        AND T0.Deleted  = 'N'
+        AND T0.SellItem = 'Y'
+    `, { code: { type: sql.NVarChar, value: code } });
 
-    // Datos del artículo
-    const { data: item } = await sapClient.get(
-      `/Items('${encodeURIComponent(code)}')?$select=ItemCode,ItemName,QuantityOnStock,OnOrder,IsCommited,SalesUnit,PriceList,ItemWarehouseInfoCollection`
-    );
+    if (!result.recordset.length)
+      return res.status(404).json({ error: 'Artículo no encontrado' });
 
-    const result = {
-      code:       item.ItemCode,
-      name:       item.ItemName,
-      totalStock: item.QuantityOnStock,
-      onOrder:    item.OnOrder,
-      committed:  item.IsCommited,
-      unit:       item.SalesUnit || 'UND',
-      warehouses: (item.ItemWarehouseInfoCollection || []).map((wh) => ({
-        warehouse: wh.WarehouseCode,
-        inStock:   wh.InStock,
-        committed: wh.Committed,
-        ordered:   wh.Ordered,
-        available: wh.InStock - wh.Committed,
-      })),
-    };
-
-    res.json(result);
-  } catch (err) {
-    handleSapError(err, res);
-  }
+    const first = result.recordset[0];
+    res.json({
+      code:       first.ItemCode,
+      name:       first.ItemName,
+      totalStock: first.TotalStock,
+      committed:  first.Committed,
+      onOrder:    first.OnOrder,
+      unit:       first.SalesUnit || 'UND',
+      warehouses: result.recordset
+        .filter(r => r.WhsCode)
+        .map(r => ({
+          warehouse: r.WhsCode,
+          name:      r.WhsName,
+          inStock:   r.WhsStock,
+          committed: r.WhsCommitted,
+          onOrder:   r.WhsOnOrder,
+          available: r.Available,
+        })),
+    });
+  } catch (err) { handleError(err, res); }
 });
 
-// ── GET /api/inventory/search?q=TEXTO&warehouse=01 ────────────
-// Busca artículos por código o nombre parcial
+// GET /api/inventory/search?q=TEXTO&warehouse=01
 router.get('/search', async (req, res) => {
   try {
     const q  = (req.query.q  || '').trim();
     const wh = (req.query.warehouse || '').trim();
-
     if (!q) return res.status(400).json({ error: 'Parámetro q requerido' });
 
-    // SAP OData filter: contains en ItemCode o ItemName
-    const filter = `contains(ItemCode,'${q}') or contains(ItemName,'${q}')`;
-    const select = 'ItemCode,ItemName,QuantityOnStock,SalesUnit,ItemWarehouseInfoCollection';
+    const whFilter = wh ? 'AND T2.WhsCode = @wh' : '';
 
-    const { data } = await sapClient.get(
-      `/Items?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=50`
-    );
+    const result = await query(`
+      SELECT TOP 50
+        T0.ItemCode,
+        T0.ItemName,
+        T0.OnHand      AS TotalStock,
+        T0.SalUnitMsr  AS SalesUnit,
+        T2.WhsCode,
+        T1.WhsName,
+        T2.OnHand      AS WhsStock,
+        (T2.OnHand - T2.IsCommited) AS Available
+      FROM OITM T0
+      LEFT JOIN OITW T2 ON T0.ItemCode = T2.ItemCode
+      LEFT JOIN OWHS T1 ON T2.WhsCode  = T1.WhsCode
+      WHERE T0.Deleted  = 'N'
+        AND T0.SellItem = 'Y'
+        AND (T0.ItemCode LIKE @q OR T0.ItemName LIKE @q)
+        ${whFilter}
+      ORDER BY T0.ItemCode
+    `, {
+      q: { type: sql.NVarChar, value: `%${q}%` },
+      ...(wh ? { wh: { type: sql.NVarChar, value: wh } } : {}),
+    });
 
-    let items = (data.value || []).map((item) => ({
-      code:       item.ItemCode,
-      name:       item.ItemName,
-      totalStock: item.QuantityOnStock,
-      unit:       item.SalesUnit || 'UND',
-      warehouses: (item.ItemWarehouseInfoCollection || []).map((wh) => ({
-        warehouse: wh.WarehouseCode,
-        inStock:   wh.InStock,
-        available: wh.InStock - wh.Committed,
-      })),
-    }));
-
-    // Filtrar por almacén si se especificó
-    if (wh) {
-      items = items.map((item) => ({
-        ...item,
-        warehouses: item.warehouses.filter((w) => w.warehouse === wh),
-      })).filter((item) => item.warehouses.length > 0);
-    }
-
-    res.json(items);
-  } catch (err) {
-    handleSapError(err, res);
-  }
+    res.json(groupItems(result.recordset));
+  } catch (err) { handleError(err, res); }
 });
 
-// ── GET /api/inventory/all?warehouse=01&top=100 ───────────────
-// Lista todos los artículos (paginado, máx 200)
+// GET /api/inventory/all?warehouse=01&top=100
 router.get('/all', async (req, res) => {
   try {
     const wh  = (req.query.warehouse || '').trim();
-    const top = Math.min(parseInt(req.query.top) || 100, 200);
+    const top = Math.min(parseInt(req.query.top) || 100, 500);
+    const whFilter = wh ? 'AND T2.WhsCode = @wh' : '';
 
-    const select = 'ItemCode,ItemName,QuantityOnStock,SalesUnit,ItemWarehouseInfoCollection';
-    const filter = 'QuantityOnStock ge 0'; // Solo artículos de venta
-    const { data } = await sapClient.get(
-      `/Items?$filter=${encodeURIComponent(filter)}&$select=${select}&$top=${top}&$orderby=ItemCode asc`
-    );
+    const result = await query(`
+      SELECT TOP ${top}
+        T0.ItemCode,
+        T0.ItemName,
+        T0.OnHand      AS TotalStock,
+        T0.SalUnitMsr  AS SalesUnit,
+        T2.WhsCode,
+        T1.WhsName,
+        T2.OnHand      AS WhsStock,
+        (T2.OnHand - T2.IsCommited) AS Available
+      FROM OITM T0
+      LEFT JOIN OITW T2 ON T0.ItemCode = T2.ItemCode
+      LEFT JOIN OWHS T1 ON T2.WhsCode  = T1.WhsCode
+      WHERE T0.Deleted  = 'N'
+        AND T0.SellItem = 'Y'
+        ${whFilter}
+      ORDER BY T0.ItemCode
+    `, wh ? { wh: { type: sql.NVarChar, value: wh } } : {});
 
-    let items = (data.value || []).map((item) => ({
-      code:       item.ItemCode,
-      name:       item.ItemName,
-      totalStock: item.QuantityOnStock,
-      unit:       item.SalesUnit || 'UND',
-      warehouses: (item.ItemWarehouseInfoCollection || []).map((w) => ({
-        warehouse: w.WarehouseCode,
-        inStock:   w.InStock,
-        available: w.InStock - w.Committed,
-      })),
-    }));
-
-    if (wh) {
-      items = items.map((i) => ({
-        ...i,
-        warehouses: i.warehouses.filter((w) => w.warehouse === wh),
-      })).filter((i) => i.warehouses.length > 0);
-    }
-
-    res.json(items);
-  } catch (err) {
-    handleSapError(err, res);
-  }
+    res.json(groupItems(result.recordset));
+  } catch (err) { handleError(err, res); }
 });
 
-function handleSapError(err, res) {
-  console.error('[SAP Inventory Error]', err.response?.data || err.message);
-  const status = err.response?.status || 500;
-  const msg    = err.response?.data?.error?.message?.value || err.message || 'Error SAP';
-  res.status(status).json({ error: msg });
+// GET /api/inventory/warehouses
+router.get('/warehouses', async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT WhsCode, WhsName
+      FROM OWHS
+      WHERE Inactive = 'N'
+      ORDER BY WhsCode
+    `);
+    res.json(result.recordset.map(w => ({ code: w.WhsCode, name: w.WhsName })));
+  } catch (err) { handleError(err, res); }
+});
+
+function groupItems(rows) {
+  const map = {};
+  rows.forEach(r => {
+    if (!map[r.ItemCode]) {
+      map[r.ItemCode] = {
+        code:       r.ItemCode,
+        name:       r.ItemName,
+        totalStock: r.TotalStock,
+        unit:       r.SalesUnit || 'UND',
+        warehouses: [],
+      };
+    }
+    if (r.WhsCode) {
+      map[r.ItemCode].warehouses.push({
+        warehouse: r.WhsCode,
+        name:      r.WhsName,
+        inStock:   r.WhsStock,
+        available: r.Available,
+      });
+    }
+  });
+  return Object.values(map);
+}
+
+function handleError(err, res) {
+  console.error('[Inventory Error]', err.message);
+  res.status(500).json({ error: err.message });
 }
 
 module.exports = router;
